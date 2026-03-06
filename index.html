@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>漢字間違い探し - 選べる2つのモード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Serif JP', serif;
+            background-color: #0f172a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-frame {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 450px;
+            max-height: 850px;
+            background-color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+        }
+
+        .kanji-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            grid-template-rows: repeat(8, 1fr); 
+            gap: 2px;
+            width: 100%;
+            height: 100%;
+            max-height: 520px; 
+        }
+
+        .kanji-cell {
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: min(7.5vw, 32px);
+            font-weight: 500; 
+            cursor: pointer;
+            user-select: none;
+            color: #000000;
+            border: 1px solid #e2e8f0;
+            transition: all 0.1s;
+        }
+
+        .found {
+            color: #ffffff !important;
+            background-color: #dc2626 !important;
+            font-weight: 900 !important;
+            border-color: #dc2626 !important;
+            z-index: 10;
+            transform: scale(1.05);
+        }
+
+        .missed {
+            background-color: #e2e8f0 !important;
+            color: #94a3b8 !important;
+            border-color: #cbd5e1 !important;
+            cursor: default;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .scroll-area {
+            flex: 1;
+            width: 100%;
+            overflow-y: auto;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 10px;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .animate-shake {
+            animation: shake 0.2s ease-in-out 0s 2;
+        }
+
+        .heart {
+            color: #ef4444;
+            font-size: 1.25rem;
+        }
+        .heart-empty {
+            color: #cbd5e1;
+            font-size: 1.25rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-frame">
+        <div class="flex flex-col h-full bg-slate-50">
+            <!-- Header -->
+            <div class="bg-white border-b border-slate-200">
+                <div class="py-2 text-center flex justify-between px-4 items-center">
+                    <span id="round-counter" class="text-[10px] font-bold text-slate-400 font-sans uppercase">ROUND 1 / 10</span>
+                    <h1 id="mode-title" class="text-xs font-black text-slate-800 tracking-tighter">漢字十番勝負</h1>
+                    <span id="mistake-container" class="flex gap-0.5"></span>
+                </div>
+
+                <div class="flex justify-between items-center px-6 py-3">
+                    <div class="flex items-center gap-3">
+                        <div class="text-center">
+                            <p class="text-[9px] text-slate-400 font-bold mb-1 uppercase font-sans">探す字</p>
+                            <p id="target-kanji-display" class="text-4xl font-black text-red-600 leading-none">-</p>
+                        </div>
+                        <div class="bg-red-50 px-2 py-1 rounded-lg border border-red-100 mt-2">
+                            <p id="count-display" class="text-red-600 font-black font-mono text-lg leading-none">0 / 3</p>
+                        </div>
+                    </div>
+                    <div id="timer-container" class="text-center">
+                        <p class="text-[9px] text-slate-400 font-bold mb-1 uppercase font-sans">残り時間</p>
+                        <p id="time-display" class="text-xl font-mono font-bold text-slate-900 leading-none">10.00</p>
+                    </div>
+                </div>
+
+                <div id="timer-bar" class="w-full h-1.5 bg-slate-200">
+                    <div id="timer-bar-inner" class="h-full bg-gradient-to-r from-red-600 to-orange-400 w-full transition-all duration-100 ease-linear"></div>
+                </div>
+            </div>
+
+            <!-- Grid Area -->
+            <div class="flex-1 flex items-center justify-center p-2 bg-slate-50 overflow-hidden">
+                <div id="grid" class="kanji-grid"></div>
+            </div>
+            
+            <div class="py-2 px-4 flex justify-between items-center bg-white text-[10px] font-bold border-t border-slate-200">
+                <span class="text-slate-500 font-sans">背景の字: <span id="base-kanji-hint" class="text-slate-900 text-base font-serif">-</span></span>
+                <span id="mode-indicator" class="bg-slate-100 px-2 py-0.5 rounded text-slate-400">NORMAL</span>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen bg-slate-900 text-white">
+            <div class="mb-10 text-center px-4">
+                <div class="text-7xl mb-6">🖋️</div>
+                <h2 class="text-4xl font-black mb-1">漢字十番勝負</h2>
+                <p class="text-slate-400 text-[10px] font-sans tracking-widest mb-6">KANJI SEARCH CHALLENGE</p>
+                <!-- 追加したテキスト -->
+                <div class="bg-white/10 py-3 px-4 rounded-xl border border-white/5 inline-block">
+                    <p class="text-sm font-bold text-yellow-400">
+                        表示された漢字の中から<br>３つの違う漢字をさがせ！
+                    </p>
+                </div>
+            </div>
+            
+            <div class="flex flex-col gap-4 w-full px-6">
+                <button id="start-hard-btn" class="bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl shadow-xl active:scale-95 transition-all text-left px-8 relative overflow-hidden group">
+                    <div class="relative z-10">
+                        <p class="text-xl font-black">ガチ勝負モード</p>
+                        <p class="text-[10px] opacity-80 font-sans">制限時間10秒 / 10回戦</p>
+                    </div>
+                    <span class="absolute right-6 top-1/2 -translate-y-1/2 text-3xl opacity-20 group-hover:opacity-40 transition-opacity">⚡</span>
+                </button>
+
+                <button id="start-easy-btn" class="bg-slate-700 hover:bg-slate-600 text-white py-5 rounded-2xl shadow-xl active:scale-95 transition-all text-left px-8 relative overflow-hidden group">
+                    <div class="relative z-10">
+                        <p class="text-xl font-black">じっくりモード</p>
+                        <p class="text-[10px] opacity-80 font-sans">時間無制限 / お手つき3回まで</p>
+                    </div>
+                    <span class="absolute right-6 top-1/2 -translate-y-1/2 text-3xl opacity-20 group-hover:opacity-40 transition-opacity">☕</span>
+                </button>
+            </div>
+            
+            <p class="mt-8 text-[10px] text-slate-500 font-sans">収録ペア数: 400以上</p>
+        </div>
+
+        <!-- Inter Round Info -->
+        <div id="inter-screen" class="screen bg-black/70 backdrop-blur-sm hidden">
+            <div class="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-[340px] text-center">
+                <div id="inter-icon" class="text-4xl mb-1"></div>
+                <h2 id="inter-text" class="text-2xl font-black mb-3"></h2>
+                
+                <div class="bg-slate-50 rounded-xl p-4 text-left font-serif mb-4">
+                    <div class="flex items-center mb-4">
+                        <span id="info-target-char" class="text-4xl text-red-600 font-black mr-4 bg-white p-2 rounded-lg border border-red-100 shadow-sm w-12 h-12 flex items-center justify-center">-</span>
+                        <div class="overflow-hidden">
+                            <p class="text-[10px] text-red-400 font-bold uppercase mb-0.5">探した字</p>
+                            <p id="info-target-yomi" class="font-bold text-slate-800 text-sm leading-tight">-</p>
+                            <p id="info-target-jukugo" class="text-xs text-slate-500 truncate">-</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center pt-4 border-t border-slate-200">
+                        <span id="info-base-char" class="text-4xl text-slate-800 font-black mr-4 bg-white p-2 rounded-lg border border-slate-200 shadow-sm w-12 h-12 flex items-center justify-center">-</span>
+                        <div class="overflow-hidden">
+                            <p class="text-[10px] text-slate-400 font-bold uppercase mb-0.5">基本の字</p>
+                            <p id="info-base-yomi" class="font-bold text-slate-800 text-sm leading-tight">-</p>
+                            <p id="info-base-jukugo" class="text-xs text-slate-500 truncate">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="next-btn" class="bg-slate-900 text-white font-bold py-3 px-8 rounded-xl w-full active:scale-95 transition-transform">
+                    次へ
+                </button>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="screen bg-slate-900 text-white hidden">
+            <div class="w-full flex flex-col h-full max-w-sm">
+                <h2 class="text-2xl font-black mb-4 text-center mt-4">戦績発表</h2>
+                
+                <div class="bg-slate-800 rounded-2xl p-4 mb-4 text-center border border-slate-700">
+                    <p id="result-label" class="text-[10px] text-slate-400 font-bold mb-1">正解ラウンド数</p>
+                    <p class="text-5xl font-black text-yellow-400"><span id="correct-total">0</span><span class="text-xl font-serif text-white">/10</span></p>
+                </div>
+
+                <div class="text-[10px] font-bold text-slate-400 mb-2 px-1 uppercase tracking-widest">History</div>
+                <div id="history-list" class="scroll-area text-slate-900 mb-4"></div>
+
+                <button id="restart-btn" class="bg-red-600 text-white text-lg font-bold py-4 px-10 rounded-xl w-full font-sans shadow-xl active:scale-95 transition-all mb-4">
+                    タイトルに戻る
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // K_DICT and PAIRS_LIST are same as before
+        const K_DICT = { "田": ["た", "水田"], "由": ["よし", "理由"], "甲": ["こう", "甲羅"], "申": ["さる", "申告"], "雷": ["かみなり", "落雷"], "電": ["でん", "電気"], "雲": ["くも", "暗雲"], "曇": ["くもり", "曇天"], "雪": ["ゆき", "新雪"], "霊": ["れい", "幽霊"], "問": ["もん", "問題"], "間": ["あいだ", "時間"], "聞": ["きく", "新聞"], "開": ["ひらく", "開始"], "閉": ["とじる", "閉会"], "大": ["だい", "大きい"], "太": ["たい", "太陽"], "犬": ["いぬ", "番犬"], "王": ["おう", "国王"], "玉": ["たま", "目玉"], "土": ["つち", "土地"], "士": ["し", "武士"], "末": ["まつ", "結末"], "未": ["み", "未来"], "千": ["せん", "三千"], "干": ["ほす", "干物"], "左": ["ひだり", "左右"], "右": ["みぎ", "右折"], "己": ["おのれ", "自己"], "已": ["い", "已む無"], "巳": ["み", "巳年"], "待": ["まつ", "待機"], "特": ["とく", "特別"], "寺": ["てら", "山寺"], "侍": ["さむらい", "侍女"], "酒": ["さけ", "日本酒"], "洒": ["あらう", "瀟洒"], "治": ["おさめる", "政治"], "冶": ["や", "鍛冶"], "清": ["きよい", "清流"], "晴": ["はれ", "晴天"], "璧": ["へき", "完璧"], "壁": ["かべ", "壁画"], "崇": ["すう", "崇高"], "祟": ["たたる", "祟り"], "鳥": ["とり", "小鳥"], "烏": ["からす", "烏合"], "孤": ["こ", "孤独"], "狐": ["きつね", "白狐"], "哀": ["あわれ", "哀悼"], "衰": ["おとろえる", "衰退"], "既": ["すでに", "既成"], "即": ["そく", "即座"], "録": ["ろく", "記録"], "縁": ["えん", "縁側"], "人": ["ひと", "大人"], "入": ["はいる", "入口"], "刀": ["かたな", "日本刀"], "力": ["ちから", "全力"], "日": ["ひ", "日光"], "白": ["しろ", "潔白"], "牛": ["うし", "和牛"], "午": ["ご", "午後"], "万": ["まん", "一万"], "方": ["ほう", "方法"], "休": ["やすむ", "休暇"], "体": ["からだ", "体力"], "何": ["なに", "何事"], "河": ["かわ", "河川"], "使": ["つかう", "使用"], "便": ["べん", "便利"], "作": ["つくる", "製作"], "昨": ["きのう", "昨日"], "信": ["しんじる", "信頼"], "倍": ["ばい", "倍率"], "健": ["たてる", "健康"], "建": ["たてる", "建設"], "価": ["か", "価値"], "値": ["ち", "値段"], "住": ["すむ", "住所"], "注": ["そそぐ", "注目"], "位": ["くらい", "位置"], "泣": ["なく", "号泣"], "像": ["ぞう", "肖像"], "象": ["ぞう", "象徴"], "僕": ["ぼく", "しもべ"], "撲": ["うつ", "打撲"], "儀": ["ぎ", "儀式"], "義": ["ぎ", "正義"], "伴": ["ともなう", "伴走"], "半": ["はん", "半分"], "倒": ["たおれる", "倒壊"], "到": ["いたる", "到着"], "倣": ["ならう", "模倣"], "放": ["はなす", "開放"], "制": ["せい", "制度"], "削": ["けずる", "削減"], "前": ["まえ", "前方"], "煎": ["いる", "煎茶"], "副": ["ふく", "副業"], "幅": ["はば", "振幅"], "動": ["うごく", "行動"], "働": ["はたらく", "労働"], "博": ["はく", "博士"], "薄": ["うすい", "希薄"], "原": ["はら", "草原"], "厚": ["あつい", "濃厚"], "去": ["さる", "過去"], "法": ["ほう", "法律"], "受": ["うける", "受領"], "愛": ["あい", "愛情"], "口": ["くち", "出口"], "回": ["まわる", "回転"], "台": ["だい", "土台"], "怠": ["おこたる", "怠慢"], "君": ["くん", "君主"], "群": ["ぐん", "群衆"], "吸": ["すう", "吸収"], "扱": ["あつかう", "取扱"], "吹": ["ふく", "吹奏"], "炊": ["たく", "炊飯"], "呼": ["よぶ", "呼吸"], "波": ["なみ", "波紋"], "味": ["あじ", "風味"], "咲": ["さく", "開花"], "笑": ["わらう", "笑顔"], "品": ["しな", "商品"], "晶": ["しょう", "結晶"], "員": ["いん", "会員"], "賞": ["しょう", "賞状"], "唐": ["とう", "唐突"], "糖": ["とう", "砂糖"], "善": ["ぜん", "善悪"], "喜": ["よろこぶ", "歓喜"], "器": ["き", "食器"], "機": ["き", "機械"], "嘆": ["たん", "嘆願"], "難": ["なん", "困難"], "四": ["し", "四季"], "因": ["よる", "原因"], "国": ["くに", "国内"], "団": ["だん", "団体"], "型": ["かた", "典型"], "形": ["かたち", "形式"], "報": ["ほう", "報告"], "服": ["ふく", "衣服"], "培": ["つちかう", "栽培"], "部": ["ぶ", "部分"], "基": ["き", "基礎"], "某": ["ぼう", "某氏"], "塩": ["しお", "食塩"], "増": ["ます", "増加"], "墨": ["すみ", "水墨"], "黒": ["くろ", "暗黒"], "塾": ["じゅく", "学習塾"], "熟": ["じゅく", "熟成"], "売": ["うる", "販売"], "買": ["かう", "売買"], "変": ["かわる", "変化"], "恋": ["こい", "恋愛"], "夏": ["なつ", "夏季"], "冬": ["ふゆ", "冬季"], "夕": ["ゆう", "夕刊"], "タ": ["た", "カタカナ"], "外": ["そと", "外部"], "名": ["な", "名前"], "多": ["おおい", "多数"], "夜": ["よる", "夜間"], "液": ["えき", "液体"], "夢": ["ゆめ", "夢中"], "蔑": ["べつ", "軽蔑"], "夫": ["おっと", "夫婦"], "失": ["うしなう", "失敗"], "央": ["おう", "中央"], "英": ["えい", "英雄"], "矢": ["や", "矢印"], "女": ["おんな", "女子"], "安": ["やす", "安心"], "好": ["すき", "好意"], "如": ["ごとし", "欠如"], "妨": ["さまたげる", "妨害"], "防": ["ふせぐ", "予防"], "始": ["はじまる", "開始"], "姓": ["せい", "姓名"], "性": ["せい", "性格"], "委": ["い", "委員"], "季": ["き", "季節"], "姿": ["すがた", "容姿"], "茨": ["いばら", "茨城"], "娘": ["むすめ", "愛娘"], "良": ["よい", "良好"], "娯": ["ご", "娯楽"], "誤": ["ご", "誤解"], "嫌": ["きらう", "機謙"], "謙": ["けん", "謙虚"], "子": ["こ", "子供"], "字": ["じ", "文字"], "学": ["まなぶ", "学校"], "宅": ["たく", "住宅"], "託": ["たく", "委託"], "宇": ["う", "宇宙"], "守": ["まもる", "守護"], "完": ["かん", "完了"], "宛": ["あて", "宛先"], "官": ["かん", "官僚"], "管": ["かん", "管理"], "室": ["しつ", "教室"], "窒": ["ちつ", "窒素"], "客": ["きゃく", "来客"], "容": ["よう", "容器"], "宮": ["みや", "宮殿"], "害": ["がい", "害虫"], "割": ["わり", "割合"], "宴": ["えん", "宴会"], "宿": ["しゅく", "宿泊"], "縮": ["しゅく", "縮小"], "寄": ["よる", "寄付"], "崎": ["さき", "川崎"], "富": ["とみ", "富裕"], "冨": ["とみ", "人名用"], "察": ["さつ", "警察"], "祭": ["まつり", "祭礼"], "寒": ["かん", "寒冷"], "塞": ["ふさぐ", "要塞"], "導": ["みちびく", "指導"], "道": ["みち", "道理"], "封": ["ほう", "封筒"], "対": ["つい", "対比"], "専": ["せん", "専門"], "射": ["いる", "射撃"], "謝": ["しゃ", "感謝"], "尋": ["たずねる", "尋問"], "小": ["ちいさい", "小型"], "少": ["すくない", "減少"], "尖": ["とがる", "尖塔"], "劣": ["おとる", "劣悪"], "就": ["しゅう", "就任"], "蹴": ["ける", "一蹴"], "展": ["てん", "展示"], "殿": ["どの", "宮殿"], "島": ["しま", "離島"], "奇": ["き", "奇跡"], "工": ["こう", "工作"], "エ": ["え", "カタカナ"], "差": ["さ", "格差"], "着": ["きる", "到着"], "帯": ["おび", "世帯"], "滞": ["とどこおる", "滞在"], "帳": ["ちょう", "通帳"], "張": ["はる", "緊張"], "幕": ["まく", "開幕"], "墓": ["はか", "墓地"], "平": ["たいら", "平和"], "年": ["とし", "新年"], "幸": ["しあわせ", "幸福"], "辛": ["からい", "辛口"], "底": ["そこ", "海底"], "低": ["ひくい", "最低"], "府": ["ふ", "政府"], "符": ["ふ", "符号"], "廊": ["ろう", "回廊"], "郎": ["ろう", "新郎"], "廷": ["てい", "法廷"], "延": ["えん", "延長"], "引": ["ひく", "引用"], "弘": ["ひろむ", "弘前"], "弟": ["おとうと", "兄弟"], "第": ["だい", "第一"], "弦": ["つる", "弓弦"], "強": ["つよい", "強固"], "弱": ["よわい", "弱点"], "溺": ["おぼれる", "溺愛"], "役": ["やく", "役割"], "投": ["なげる", "投入"], "彼": ["かれ", "彼氏"], "被": ["こうむる", "被害"], "徒": ["と", "生徒"], "従": ["したがう", "従来"], "得": ["える", "所得"], "御": ["おん", "制御"], "街": ["まち", "市街"], "急": ["いそぐ", "急行"], "悪": ["わるい", "最悪"], "怪": ["あやしい", "奇怪"], "経": ["へる", "経済"], "恵": ["めぐみ", "恩恵"], "思": ["お思う", "思考"], "感": ["かん", "感動"], "惑": ["わく", "惑星"], "成": ["なる", "成功"], "戒": ["いましめる", "自戒"], "技": ["わざ", "技術"], "枝": ["えだ", "枝葉"], "折": ["おる", "骨折"], "祈": ["いのる", "祈願"], "抜": ["ぬく", "抜本"], "拍": ["はく", "拍手"], "伯": ["はく", "伯爵"], "拡": ["かく", "拡大"], "広": ["ひろ", "広告"], "招": ["まねく", "招待"], "昭": ["あきら", "昭和"], "採": ["とる", "採用"], "妥": ["だ", "妥協"], "援": ["えん", "援助"], "暖": ["だん", "暖房"], "損": ["そん", "損傷"], "操": ["そう", "操作"], "燥": ["そう", "乾燥"], "改": ["あらためる", "改正"], "政": ["せい", "政治"], "故": ["ゆえ", "故郷"], "敬": ["うやまう", "敬老"], "敏": ["びん", "敏捷"], "梅": ["うめ", "梅干"], "救": ["すくう", "救急"], "求": ["もとめる", "要求"], "敗": ["はい", "敗北"], "販": ["はん", "販売"], "斉": ["せい", "斉唱"], "済": ["さい", "返済"], "断": ["だん", "断絶"], "継": ["けい", "継承"], "新": ["あたらしい", "新聞"], "親": ["おや", "親密"], "旅": ["たび", "旅行"], "旋": ["せん", "旋回"], "萌": ["もえる", "萌芽"], "星": ["ほし", "衛星"], "昇": ["のぼる", "昇進"], "照": ["てらす", "対照"], "昼": ["ひる", "昼食"], "書": ["かく", "書道"], "更": ["さら", "更新"], "有": ["ある", "所有"], "布": ["ぬの", "布教"], "朝": ["あさ", "早朝"], "潮": ["しお", "潮汐"], "期": ["き", "期待"], "碁": ["ご", "囲碁"], "朴": ["ほく", "素朴"], "林": ["はやし", "森林"], "机": ["つくえ", "机上"], "肌": ["はだ", "肌着"], "村": ["むら", "市町村"], "材": ["ざい", "材料"], "束": ["たば", "結束"], "東": ["ひがし", "東洋"], "校": ["こう", "学校"], "交": ["こう", "交流"], "根": ["ね", "根本"], "限": ["かぎる", "限定"], "案": ["あん", "案内"], "極": ["きょく", "北極"], "級": ["きゅう", "階級"], "構": ["こう", "構造"], "講": ["こう", "講義"], "横": ["よこ", "横断"], "樹": ["き", "樹木"], "縦": ["たて", "縦断"], "歓": ["かん", "歓喜"], "勧": ["かん", "勧誘"], "武": ["ぶ", "武道"], "賦": ["ふ", "月賦"], "死": ["し", "死闘"], "残": ["のこる", "残念"], "殊": ["こと", "特殊"], "珠": ["たま", "真珠"], "殖": ["ふえる", "増殖"], "列": ["れつ", "整列"], "段": ["だん", "階段"], "鍛": ["きたえる", "鍛錬"], "殺": ["ころす", "殺人"], "希": ["き", "希求"], "毒": ["どく", "消毒"], "毎": ["まい", "毎日"], "氷": ["こおり", "氷山"], "永": ["ながい", "永遠"], "洗": ["あらう", "洗浄"], "先": ["さき", "先生"], "派": ["は", "派閥"], "脈": ["みゃく", "人脈"], "消": ["きえる", "消去"], "混": ["まざる", "混雑"], "昆": ["こん", "昆虫"], "港": ["みなと", "空港"], "巷": ["ちまた", "巷説"], "源": ["みなもと", "源泉"], "願": ["ねがう", "願望"], "漁": ["ぎょ", "漁師"], "魚": ["さかな", "熱帯魚"], "潔": ["いさぎよい", "清潔"], "濃": ["こい", "濃厚"], "農": ["濃", "農業"], "理": ["り", "理由"], "埋": ["うめる", "埋設"], "編": ["あむ", "編集"], "偏": ["かたよる", "偏見"], "模": ["も", "模型"], "漠": ["ばく", "砂漠"], "眼": ["め", "眼球"], "眠": ["ねむる", "睡眠"], "練": ["ねる", "練習"], "錬": ["ねる", "精錬"], "銅": ["どう", "銅メダル"], "洞": ["ほら", "洞窟"], "胴": ["どう", "胴着"], "網": ["あみ", "網羅"], "鋼": ["こう", "鋼鉄"], "剛": ["ごう", "剛健"], "購": ["こう", "購入"], "溝": ["みぞ", "側溝"], "振": ["ふる", "振動"], "慎": ["つつしむ", "慎重"], "娠": ["しん", "妊娠"], "震": ["ふるえる", "地震"], "誇": ["ほこる", "誇張"], "誘": ["さそう", "誘導"], "透": ["すく", "透明"], "秀": ["しゅう", "優秀"], "板": ["いた", "看板"], "版": ["はん", "版画"], "判": ["はん", "判断"], "搬": ["はこぶ", "搬入"], "般": ["はん", "一般的"], "船": ["ふね", "船舶"], "航": ["こう", "航空"], "項": ["こう", "項目"], "頂": ["いただき", "頂上"], "順": ["じゅん", "順番"], "頑": ["かたくな", "頑固"], "顔": ["かお", "表情"], "頭": ["あたま", "頭脳"], "題": ["だい", "問題"], "類": ["るい", "分類"], "額": ["がく", "額縁"], "頼": ["たよる", "依頼"], "顕": ["あらわれる", "顕著"], "風": ["かぜ", "風景"], "嵐": ["あらし", "嵐山"], "餌": ["えさ", "給餌"], "飲": ["のむ", "飲料"], "館": ["かん", "図書館"], "駅": ["えき", "駅伝"], "馬": ["うま", "競馬"], "駆": ["かける", "駆使"], "駐": ["ちゅう", "駐車"], "験": ["けん", "経験"], "検": ["けん", "検査"], "骨": ["ほね", "骨格"], "滑": ["すべる", "滑走"], "髄": ["ずい", "骨髄"], "高": ["たかい", "高度"], "亭": ["てい", "料亭"], "亮": ["あきら", "人名"], "毫": ["ごう", "寸毫"], "亨": ["とおる", "享受"], "衷": ["ちゅう", "折衷"], "喪": ["そう", "喪失"], "衣": ["ころも", "衣装"], "依": ["よる", "依頼"], "褒": ["ほめる", "褒美"], "裂": ["さける", "分裂"], "装": ["よそおう", "装置"], "製": ["せい", "製作"], "複": ["ふく", "複雑"], "腹": ["はら", "腹痛"], "褐": ["かつ", "褐色"], "掲": ["かかげる", "掲載"], "喝": ["かつ", "喝采"], "葛": ["くず", "葛藤"], "誌": ["し", "雑誌"], "誰": ["だれ", "誰何"], "唯": ["ただ", "唯一"], "推": ["おす", "推薦"], "諾": ["だく", "承諾"], "若": ["わかい", "若手"], "匿": ["とく", "匿名"], "再": ["さい", "再開"], "綱": ["つな", "横綱"] };
+        const PAIRS_LIST = [ ["田","由"], ["田","甲"], ["田","申"], ["由","申"], ["甲","申"], ["雷","電"], ["雲","曇"], ["雪","霊"], ["問","間"], ["問","聞"], ["間","聞"], ["開","閉"], ["大","太"], ["大","犬"], ["太","犬"], ["王","玉"], ["土","士"], ["末","未"], ["千","干"], ["左","右"], ["己","已"], ["己","巳"], ["已","巳"], ["待","特"], ["寺","侍"], ["酒","洒"], ["治","冶"], ["清","晴"], ["璧","壁"], ["崇","祟"], ["鳥","烏"], ["孤","狐"], ["哀","衰"], ["既","即"], ["録","縁"], ["人","入"], ["刀","力"], ["日","白"], ["牛","午"], ["万","方"], ["休","体"], ["何","河"], ["使","便"], ["作","昨"], ["信","倍"], ["健","建"], ["価","値"], ["住","注"], ["位","泣"], ["像","象"], ["僕","撲"], ["儀","義"], ["伴","半"], ["倒","到"], ["倣","放"], ["制","削"], ["前","煎"], ["副","幅"], ["動","働"], ["博","薄"], ["原","厚"], ["去","法"], ["受","愛"], ["口","回"], ["台","怠"], ["君","群"], ["吸","扱"], ["吹","炊"], ["呼","波"], ["味","未"], ["咲","笑"], ["品","晶"], ["員","賞"], ["唐","糖"], ["善","喜"], ["器","機"], ["嘆","難"], ["四","因"], ["国","団"], ["型","形"], ["報","服"], ["培","部"], ["基","某"], ["塩","増"], ["墨","黒"], ["塾","熟"], ["売","買"], ["変","恋"], ["夏","冬"], ["夕","タ"], ["外","名"], ["多","名"], ["夜","液"], ["夢","蔑"], ["夫","失"], ["央","英"], ["失","矢"], ["女","安"], ["好","如"], ["妨","防"], ["始","治"], ["姓","性"], ["委","季"], ["姿","茨"], ["娘","良"], ["娯","誤"], ["嫌","謙"], ["子","字"], ["学","字"], ["宅","託"], ["宇","字"], ["守","特"], ["完","宛"], ["官","管"], ["室","窒"], ["客","容"], ["宮","官"], ["害","割"], ["宴","安"], ["宿","縮"], ["寄","崎"], ["富","冨"], ["察","祭"], ["寒","塞"], ["導","道"], ["封","対"], ["専","博"], ["射","謝"], ["尋","録"], ["小","少"], ["尖","劣"], ["就","蹴"], ["展","殿"], ["島","鳥"], ["崎","奇"], ["工","エ"], ["差","着"], ["帯","滞"], ["帳","張"], ["幅","副"], ["幕","墓"], ["平","半"], ["年","牛"], ["幸","辛"], ["底","低"], ["府","符"], ["廊","郎"], ["廷","延"], ["引","弘"], ["弟","第"], ["弦","強"], ["弱","溺"], ["役","投"], ["彼","被"], ["徒","従"], ["得","待"], ["御","街"], ["急","悪"], ["怪","経"], ["恵","思"], ["感","惑"], ["成","戒"], ["技","枝"], ["折","祈"], ["抜","投"], ["拍","伯"], ["拡","広"], ["招","昭"], ["採","妥"], ["援","暖"], ["損","員"], ["操","燥"], ["改","政"], ["故","敬"], ["敏","梅"], ["救","求"], ["敗","販"], ["斉","済"], ["断","継"], ["新","親"], ["旅","旋"], ["既","即"], ["明","萌"], ["星","昇"], ["昭","照"], ["昼","書"], ["更","便"], ["有","布"], ["服","報"], ["朝","潮"], ["期","碁"], ["朴","林"], ["机","肌"], ["村","材"], ["束","東"], ["校","交"], ["根","限"], ["案","案"], ["極","級"], ["構","講"], ["横","機"], ["樹","縦"], ["歓","勧"], ["武","賦"], ["死","残"], ["殊","珠"], ["殖","列"], ["段","鍛"], ["殺","希"], ["毒","毎"], ["氷","永"], ["洗","先"], ["派","脈"], ["消","削"], ["混","昆"], ["港","巷"], ["源","願"], ["漁","魚"], ["潔","白"], ["濃","農"], ["探","採"], ["理","埋"], ["編","偏"], ["模","漠"], ["眼","眠"], ["練","錬"], ["導","尋"], ["銅","洞"], ["網","鋼"], ["鋼","剛"], ["講","構"], ["講","購"], ["購","溝"], ["溝","構"], ["構","購"], ["振","慎"], ["娠","振"], ["震","振"], ["誇","誘"], ["誘","透"], ["透","秀"], ["秀","季"], ["季","委"], ["委","透"], ["板","版"], ["判","伴"], ["搬","般"], ["般","船"], ["船","般"], ["航","船"], ["航","般"], ["項","頂"], ["順","頑"], ["顔","頭"], ["顔","願"], ["願","顔"], ["題","類"], ["額","頼"], ["頼","顔"], ["顕","類"], ["願","類"], ["風","嵐"], ["嵐","風"], ["飼","餌"], ["飯","飲"], ["館","宿"], ["駅","馬"], ["駅","駆"], ["駆","駐"], ["駐","馬"], ["験","検"], ["骨","滑"], ["骨","髄"], ["滑","骨"], ["髄","骨"], ["高","亭"], ["亮","高"], ["毫","高"], ["亨","高"], ["衰","哀"], ["衷","衰"], ["喪","衰"], ["衷","哀"], ["喪","哀"], ["衷","喪"], ["衣","依"], ["依","衣"], ["褒","衰"], ["褒","哀"], ["褒","衷"], ["裂","装"], ["裂","製"], ["製","装"], ["複","製"], ["複","腹"], ["腹","複"], ["褐","掲"], ["褐","喝"], ["喝","褐"], ["掲","喝"], ["褐","掲"], ["喝","掲"], ["葛","褐"], ["葛","掲"], ["葛","喝"], ["誌","雑誌"], ["誰","唯"], ["誰","推"], ["誰","難"], ["難","誰"], ["難","推"], ["推","唯"], ["推","誰"], ["唯","推"], ["唯","誰"], ["誘","誰"], ["誘","唯"], ["誘","推"], ["諾","若"], ["諾","匿"], ["匿","諾"], ["匿","若"], ["若","匿"], ["若","諾"], ["講","再"], ["溝","再"], ["購","再"], ["構","再"], ["再","講"], ["再","溝"], ["再","購"], ["再","構"], ["構","講"], ["構","購"], ["購","講"], ["講","購"], ["溝","購"], ["購","溝"], ["溝","講"], ["講","溝"], ["溝","構"], ["構","溝"], ["構","購"], ["購","構"], ["銅","胴"], ["胴","洞"], ["綱","網"], ["網","綱"] ];
+
+        const TOTAL_ROUNDS = 10;
+        const GRID_TOTAL = 48;
+        const TARGET_COUNT = 3;
+        const INITIAL_TIME = 10000;
+        const MAX_MISTAKES = 3;
+
+        let gameMode = 'HARD'; 
+        let currentRound = 1;
+        let correctRounds = 0;
+        let questionStack = []; 
+        let roundResults = []; 
+        let currentPair = null;
+        let isPlaying = false;
+        let timeLeft = INITIAL_TIME;
+        let foundCount = 0;
+        let mistakes = 0;
+        let lastTimestamp = 0;
+        let animationFrameId = null;
+
+        const gridElement = document.getElementById('grid');
+        const targetDisplay = document.getElementById('target-kanji-display');
+        const countDisplay = document.getElementById('count-display');
+        const timeDisplay = document.getElementById('time-display');
+        const timerBarInner = document.getElementById('timer-bar-inner');
+        const baseHintDisplay = document.getElementById('base-kanji-hint');
+        const roundCounter = document.getElementById('round-counter');
+        const mistakeContainer = document.getElementById('mistake-container');
+        const interScreen = document.getElementById('inter-screen');
+        const startScreen = document.getElementById('start-screen');
+        const resultScreen = document.getElementById('result-screen');
+        const modeIndicator = document.getElementById('mode-indicator');
+        const timerContainer = document.getElementById('timer-container');
+        const timerBar = document.getElementById('timer-bar');
+
+        function selectMode(mode) {
+            gameMode = mode;
+            startGame();
+        }
+
+        function startGame() {
+            currentRound = 1;
+            correctRounds = 0;
+            roundResults = [];
+            
+            startScreen.classList.add('hidden');
+            resultScreen.classList.add('hidden');
+            interScreen.classList.add('hidden');
+
+            if (gameMode === 'EASY') {
+                modeIndicator.innerText = 'じっくり';
+                timerContainer.classList.add('invisible');
+                timerBar.classList.add('invisible');
+            } else {
+                modeIndicator.innerText = 'ガチ勝負';
+                timerContainer.classList.remove('invisible');
+                timerBar.classList.remove('invisible');
+            }
+            
+            let shuffled = [...PAIRS_LIST].sort(() => 0.5 - Math.random());
+            let selected = shuffled.slice(0, TOTAL_ROUNDS);
+
+            questionStack = selected.map(p => {
+                const isSwapped = Math.random() > 0.5;
+                const char1 = isSwapped ? p[1] : p[0];
+                const char2 = isSwapped ? p[0] : p[1];
+                const d1 = K_DICT[char1] || [char1, "未登録"];
+                const d2 = K_DICT[char2] || [char2, "未登録"];
+                return {
+                    target: { c: char1, y: d1[0], j: d1[1] },
+                    base: { c: char2, y: d2[0], j: d2[1] }
+                };
+            });
+
+            initRound();
+        }
+
+        function updateMistakeDisplay() {
+            mistakeContainer.innerHTML = '';
+            if (gameMode === 'EASY') {
+                for (let i = 0; i < MAX_MISTAKES; i++) {
+                    const icon = document.createElement('span');
+                    icon.className = i < (MAX_MISTAKES - mistakes) ? 'heart' : 'heart-empty';
+                    icon.innerText = '♥';
+                    mistakeContainer.appendChild(icon);
+                }
+            }
+        }
+
+        function initRound() {
+            gridElement.innerHTML = '';
+            foundCount = 0;
+            mistakes = 0;
+            currentPair = questionStack[currentRound - 1];
+            
+            targetDisplay.innerText = currentPair.target.c;
+            baseHintDisplay.innerText = currentPair.base.c;
+            roundCounter.innerText = `ROUND ${currentRound} / 10`;
+            countDisplay.innerText = `0 / ${TARGET_COUNT}`;
+            updateMistakeDisplay();
+
+            let indices = Array.from({length: GRID_TOTAL}, (_, i) => i).sort(() => 0.5 - Math.random());
+            const targetIndices = indices.slice(0, TARGET_COUNT);
+
+            for (let i = 0; i < GRID_TOTAL; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'kanji-cell';
+                cell.innerText = targetIndices.includes(i) ? currentPair.target.c : currentPair.base.c;
+                cell.dataset.target = targetIndices.includes(i);
+                cell.onclick = () => handleCellClick(cell);
+                gridElement.appendChild(cell);
+            }
+            
+            isPlaying = true;
+            if (gameMode === 'HARD') {
+                timeLeft = INITIAL_TIME;
+                lastTimestamp = Date.now();
+                runTimer();
+            }
+        }
+
+        function handleCellClick(cell) {
+            if (!isPlaying || cell.classList.contains('found') || cell.classList.contains('missed')) return;
+            
+            if (cell.dataset.target === 'true') {
+                cell.classList.add('found');
+                foundCount++;
+                countDisplay.innerText = `${foundCount} / ${TARGET_COUNT}`;
+                if (foundCount === TARGET_COUNT) endRound(true);
+            } else {
+                cell.classList.add('missed');
+                if (gameMode === 'HARD') {
+                    timeLeft = Math.max(0, timeLeft - 1500); 
+                } else {
+                    mistakes++;
+                    updateMistakeDisplay();
+                    if (mistakes >= MAX_MISTAKES) {
+                        endRound(false);
+                    }
+                }
+                gridElement.classList.add('animate-shake');
+                setTimeout(() => gridElement.classList.remove('animate-shake'), 300);
+            }
+        }
+
+        function runTimer() {
+            if (!isPlaying || gameMode === 'EASY') return;
+            const now = Date.now();
+            timeLeft -= (now - lastTimestamp);
+            lastTimestamp = now;
+            
+            if (timeLeft <= 0) { 
+                timeLeft = 0; 
+                endRound(false); 
+            }
+            
+            timeDisplay.innerText = (timeLeft / 1000).toFixed(2);
+            timerBarInner.style.width = (timeLeft / INITIAL_TIME * 100) + '%';
+            
+            if (isPlaying) {
+                animationFrameId = requestAnimationFrame(runTimer);
+            }
+        }
+
+        function endRound(success) {
+            isPlaying = false;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            
+            roundResults.push({
+                pair: currentPair,
+                success: success
+            });
+
+            if (success) correctRounds++;
+            
+            Array.from(gridElement.children).forEach(c => {
+                if(c.dataset.target === 'true') c.classList.add('found');
+            });
+
+            setTimeout(() => showInter(success), 800);
+        }
+
+        function showInter(success) {
+            document.getElementById('info-target-char').innerText = currentPair.target.c;
+            document.getElementById('info-target-yomi').innerText = currentPair.target.y;
+            document.getElementById('info-target-jukugo').innerText = `例: ${currentPair.target.j}`;
+            
+            document.getElementById('info-base-char').innerText = currentPair.base.c;
+            document.getElementById('info-base-yomi').innerText = currentPair.base.y;
+            document.getElementById('info-base-jukugo').innerText = `例: ${currentPair.base.j}`;
+
+            const icon = document.getElementById('inter-icon');
+            const text = document.getElementById('inter-text');
+            icon.innerText = success ? '⭕' : '❌';
+            text.innerText = success ? '正解！' : '失敗...';
+            text.className = `text-2xl font-black mb-3 ${success ? 'text-emerald-600' : 'text-red-600'}`;
+
+            interScreen.classList.remove('hidden');
+        }
+
+        document.getElementById('next-btn').onclick = () => {
+            interScreen.classList.add('hidden');
+            if (currentRound < TOTAL_ROUNDS) {
+                currentRound++;
+                initRound();
+            } else {
+                showFinalResult();
+            }
+        };
+
+        function showFinalResult() {
+            document.getElementById('correct-total').innerText = correctRounds;
+            document.getElementById('result-label').innerText = gameMode === 'HARD' ? '正解ラウンド数' : 'クリアラウンド数';
+            
+            const historyList = document.getElementById('history-list');
+            historyList.innerHTML = '';
+            
+            roundResults.forEach((res, i) => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-3 bg-white mb-2 rounded-lg shadow-sm border-l-4 ' + (res.success ? 'border-emerald-500' : 'border-red-500');
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-[10px] font-bold text-slate-400 font-sans w-4">${i+1}</span>
+                        <div class="flex items-center gap-1">
+                            <span class="text-xl font-black text-red-600">${res.pair.target.c}</span>
+                            <span class="text-xl font-medium text-slate-400">${res.pair.base.c}</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[9px] text-slate-400 font-bold leading-none">${res.pair.target.y}</span>
+                            <span class="text-[10px] text-slate-600 font-serif leading-tight">${res.pair.target.j}</span>
+                        </div>
+                    </div>
+                    <span class="text-xl">${res.success ? '⭕' : '❌'}</span>
+                `;
+                historyList.appendChild(item);
+            });
+
+            resultScreen.classList.remove('hidden');
+        }
+
+        document.getElementById('start-hard-btn').onclick = () => selectMode('HARD');
+        document.getElementById('start-easy-btn').onclick = () => selectMode('EASY');
+        document.getElementById('restart-btn').onclick = () => {
+            resultScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        };
+    </script>
+</body>
+</html>
